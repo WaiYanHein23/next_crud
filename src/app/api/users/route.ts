@@ -1,7 +1,23 @@
 import { PrismaClient } from "@prisma/client";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const prisma = new PrismaClient();
+
+const userSchema = z.object({
+  username: z
+    .string({
+      required_error: "Username is required",
+      invalid_type_error: "Username must be a string",
+    })
+    .min(3, "Username must be at least 3 characters"),
+  email: z
+    .string({
+      required_error: "Email is required",
+      invalid_type_error: "Email must be a string",
+    })
+    .email("Invalid email format"),
+});
 
 export async function GET(request: Request) {
   try {
@@ -14,7 +30,7 @@ export async function GET(request: Request) {
         skip: page * rowsPerPage,
         take: rowsPerPage,
         orderBy: {
-          id: 'asc',
+          id: "asc",
         },
       }),
       prisma.user.count(),
@@ -35,14 +51,20 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { username, email } = await request.json();
+    const body = await request.json();
 
-    if (!username || !email) {
+    const parsed = userSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Username and email are required" },
+        {
+          error: "Validation failed",
+          details: parsed.error.flatten().fieldErrors,
+        },
         { status: 400 }
       );
     }
+
+    const { username, email } = parsed.data;
 
     const existingUser = await prisma.user.findUnique({
       where: {

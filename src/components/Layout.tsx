@@ -28,10 +28,18 @@ import { z } from "zod";
 
 const formSchema = z.object({
   username: z
-    .string()
+    .string({
+      required_error: "Username is required",
+      invalid_type_error: "Username must be a string",
+    })
     .min(3, "Username must be at least 3 characters")
     .max(20, "Username must be at most 20 characters"),
-  email: z.string().email(" Email address are required"),
+  email: z
+    .string({
+      required_error: "Email is required",
+      invalid_type_error: "Email must be a string",
+    })
+    .email(" Must be Email format"),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -62,7 +70,6 @@ const Layout = () => {
     resolver: zodResolver(formSchema),
   });
 
-  // Modal handlers
   const handleOpenAddModal = () => setOpenAddModal(true);
   const handleCloseAddModal = () => {
     setOpenAddModal(false);
@@ -282,7 +289,9 @@ const Layout = () => {
         <Box sx={{ my: 4 }}>
           <Paper elevation={3} sx={{ p: 2 }}>
             <Navbar onAddClick={handleOpenAddModal} />
-            <UserTable handleOpenEditModal={handleOpenEditModal} />
+            <TableContainer>
+              <UserTable handleOpenEditModal={handleOpenEditModal} />
+            </TableContainer>
           </Paper>
         </Box>
       </Container>
