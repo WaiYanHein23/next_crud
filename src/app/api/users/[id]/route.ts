@@ -32,14 +32,23 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const body = await request.json();
-    const { username, email } = body;
+    const { username, email } = await request.json();
 
     // Validation
     if (!username || !email) {
       return NextResponse.json(
         { error: "All fields are required" },
         { status: 400 }
+      );
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
+    if (existingUser && existingUser.id !== Number(params.id)) {
+      return NextResponse.json(
+        { error: "Email already exists", field: "email" },
+        { status: 409 }
       );
     }
 

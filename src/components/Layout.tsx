@@ -1,5 +1,6 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import React from "react";
 import { mutate } from "swr";
@@ -16,37 +17,74 @@ import {
   Paper,
   TableContainer,
   IconButton,
+  Snackbar,
+  Alert,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import Navbar from "./Navbar";
 import UserTable from "./UserTable";
 import "../app/globals.css";
+import { z } from "zod";
 
-interface FormData {
+const formSchema = z.object({
+  username: z
+    .string()
+    .min(3, "Username must be at least 3 characters")
+    .max(20, "Username must be at most 20 characters"),
+  email: z.string().email(" Email address are required"),
+});
+
+type FormData = z.infer<typeof formSchema>;
+
+type User = {
+  id: number;
   username: string;
   email: string;
-}
+};
 
 const Layout = () => {
   const [openAddModal, setOpenAddModal] = React.useState(false);
   const [openEditModal, setOpenEditModal] = React.useState(false);
   const [editUserId, setEditUserId] = React.useState<number | null>(null);
-
-  const handleOpenAddModal = () => setOpenAddModal(true);
-  const handleCloseAddModal = () => setOpenAddModal(false);
-  const handleCloseEditModal = () => setOpenEditModal(false);
+  const [snackbar, setSnackbar] = React.useState({
+    open: false,
+    message: "",
+    severity: "success" as "success" | "error",
+  });
 
   const {
     register,
     handleSubmit,
     reset,
-    formState: { errors },
-  } = useForm<FormData>();
+    formState: { errors, isSubmitting },
+    setError,
+  } = useForm<FormData>({
+    resolver: zodResolver(formSchema),
+  });
 
-  const handleOpenEditModal = (user: any) => {
+  // Modal handlers
+  const handleOpenAddModal = () => setOpenAddModal(true);
+  const handleCloseAddModal = () => {
+    setOpenAddModal(false);
+    reset();
+  };
+  const handleCloseEditModal = () => {
+    setOpenEditModal(false);
+    reset();
+  };
+
+  const handleOpenEditModal = (user: User) => {
     setEditUserId(user.id);
     reset({ username: user.username, email: user.email });
     setOpenEditModal(true);
+  };
+
+  const showSnackbar = (message: string, severity: "success" | "error") => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar((prev) => ({ ...prev, open: false }));
   };
 
   const onSubmit = async (data: FormData) => {
@@ -55,7 +93,6 @@ const Layout = () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Accept: "application/json",
         },
         body: JSON.stringify(data),
       });
@@ -63,14 +100,22 @@ const Layout = () => {
       const result = await response.json();
 
       if (!response.ok) {
-        console.error(result.error);
-        return;
+        if (result.field && result.error) {
+          setError(result.field, { message: result.error });
+          return;
+        }
+        throw new Error(result.error || "Failed to create user");
       }
 
       mutate("/api/users");
       handleCloseAddModal();
+      showSnackbar("User created successfully!", "success");
     } catch (error) {
-      console.error("Failed to create user:", error);
+      console.error("Error:", error);
+      showSnackbar(
+        error instanceof Error ? error.message : "An error occurred",
+        "error"
+      );
     }
   };
 
@@ -78,26 +123,33 @@ const Layout = () => {
     if (!editUserId) return;
 
     try {
-      const res = await fetch(`/api/users/${editUserId}`, {
+      const response = await fetch(`/api/users/${editUserId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Accept: "application/json",
         },
         body: JSON.stringify(data),
       });
 
-      const result = await res.json();
+      const result = await response.json();
 
-      if (!res.ok) {
-        console.error("Update failed:", result.error);
-        return;
+      if (!response.ok) {
+        if (result.field && result.error) {
+          setError(result.field, { message: result.error });
+          return;
+        }
+        throw new Error(result.error || "Failed to update user");
       }
 
       mutate("/api/users");
       handleCloseEditModal();
-    } catch (err) {
-      console.error("Error updating user:", err);
+      showSnackbar("User updated successfully!", "success");
+    } catch (error) {
+      console.error("Error:", error);
+      showSnackbar(
+        error instanceof Error ? error.message : "An error occurred",
+        "error"
+      );
     }
   };
 
@@ -118,29 +170,40 @@ const Layout = () => {
           </Box>
         </DialogTitle>
 
-        <Box component="form" onSubmit={handleSubmit(onSubmit)}>
+        <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
           <DialogContent>
             <TextField
-              {...register("username", { required: true })}
+              {...register("username")}
               margin="normal"
-              required
               fullWidth
               label="Name"
               autoFocus
+              error={!!errors.username}
+              helperText={errors.username?.message}
+              disabled={isSubmitting}
             />
             <TextField
-              {...register("email", { required: true })}
+              {...register("email")}
               margin="normal"
-              required
               fullWidth
               label="Email"
               type="email"
+              error={!!errors.email}
+              helperText={errors.email?.message}
+              disabled={isSubmitting}
             />
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleCloseAddModal}>Cancel</Button>
-            <Button type="submit" variant="contained" color="success">
-              Add
+            <Button onClick={handleCloseAddModal} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              color="success"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Adding..." : "Add"}
             </Button>
           </DialogActions>
         </Box>
@@ -161,43 +224,65 @@ const Layout = () => {
           </Box>
         </DialogTitle>
 
-        <Box component="form" onSubmit={handleSubmit(handleUpdate)}>
+        <Box component="form" onSubmit={handleSubmit(handleUpdate)} noValidate>
           <DialogContent>
             <TextField
               label="Name"
               fullWidth
               margin="normal"
-              {...register("username", { required: "Name is required" })}
+              {...register("username")}
               error={!!errors.username}
               helperText={errors.username?.message}
+              disabled={isSubmitting}
             />
             <TextField
               label="Email"
               type="email"
               fullWidth
               margin="normal"
-              {...register("email", { required: "Email is required" })}
+              {...register("email")}
               error={!!errors.email}
               helperText={errors.email?.message}
+              disabled={isSubmitting}
             />
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleCloseEditModal}>Cancel</Button>
-            <Button type="submit" variant="contained" color="info">
-              Save
+            <Button onClick={handleCloseEditModal} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              color="info"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Saving..." : "Save"}
             </Button>
           </DialogActions>
         </Box>
       </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+      >
+        <Alert
+          onClose={handleCloseSnackbar}
+          severity={snackbar.severity}
+          sx={{ width: "100%" }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
 
       {/* Main Content */}
       <Container maxWidth="md">
         <Box sx={{ my: 4 }}>
           <Paper elevation={3} sx={{ p: 2 }}>
             <Navbar onAddClick={handleOpenAddModal} />
-            <TableContainer>
-              <UserTable handleOpenEditModal={handleOpenEditModal} />
-            </TableContainer>
+            <UserTable handleOpenEditModal={handleOpenEditModal} />
           </Paper>
         </Box>
       </Container>
