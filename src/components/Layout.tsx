@@ -1,5 +1,6 @@
 "use client";
 
+import { useSession, signOut } from "next-auth/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import React from "react";
@@ -25,6 +26,7 @@ import Navbar from "./Navbar";
 import UserTable from "./UserTable";
 import "../app/globals.css";
 import { z } from "zod";
+import { useRouter } from "next/navigation";
 
 const formSchema = z.object({
   username: z
@@ -134,6 +136,7 @@ const Layout = () => {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/json",
         },
         body: JSON.stringify(data),
       });
@@ -160,8 +163,49 @@ const Layout = () => {
     }
   };
 
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  React.useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/auth/login");
+    }
+  }, [status, router]);
+
+  if (status === "loading") {
+    return <div>Loading...</div>;
+  }
+
+  if (!session) {
+    return (
+      <Box sx={{ p: 4, textAlign: "center" }}>
+        <Typography variant="h6" gutterBottom>
+          You must be signed in to access this page
+        </Typography>
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={() => console.log("Login")}
+        >
+          Sign In
+        </Button>
+      </Box>
+    );
+  }
+
+  if (!session) return null;
+
   return (
     <>
+      <Box display="flex" justifyContent="space-between" p={2}>
+        <Typography variant="body1">
+          Signed in as {session.user?.email}
+        </Typography>
+        <Button color="error" onClick={() => signOut()}>
+          Sign Out
+        </Button>
+      </Box>
+
       {/* Add Employee Modal */}
       <Dialog open={openAddModal} onClose={handleCloseAddModal}>
         <DialogTitle>
@@ -274,6 +318,7 @@ const Layout = () => {
         open={snackbar.open}
         autoHideDuration={6000}
         onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: "top", horizontal: "right" }}
       >
         <Alert
           onClose={handleCloseSnackbar}
